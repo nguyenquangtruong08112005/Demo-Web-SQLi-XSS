@@ -4,7 +4,7 @@
 ?>
 <nav class="navbar navbar-expand-lg navbar-light bg-light">
   <div class="container-fluid">
-    <a class="navbar-brand" href="dashboard.php">Vulnerable Demo</a>
+    <a class="navbar-brand" href="dashboard.php">Cell Phone Shop</a>
     <div class="collapse navbar-collapse">
       <ul class="navbar-nav me-auto mb-2 mb-lg-0">
         <?php if (isset($_SESSION['user'])): ?>
