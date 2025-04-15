@@ -6,9 +6,13 @@ $error = '';
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $username = $_POST["username"];
     $password = $_POST["password"];
-    // VULNERABLE: Query nối chuỗi trực tiếp
-    $sql = "SELECT * FROM users WHERE username = '$username' AND password = '$password'";
-    $result = $conn->query($sql);
+
+    // Sử dụng prepared statement để chống SQL Injection
+    $stmt = $conn->prepare("SELECT * FROM users WHERE username = ? AND password = ?");
+    $stmt->bind_param("ss", $username, $password);  // s: string
+    $stmt->execute();
+    $result = $stmt->get_result();
+
     if ($result && $result->num_rows > 0) {
         $user = $result->fetch_assoc();
         $_SESSION['user'] = $user['username'];
@@ -26,7 +30,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Login - Vulnerable Demo</title>
+    <title>Login</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
 </head>
 <body>

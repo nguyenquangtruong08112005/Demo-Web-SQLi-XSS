@@ -11,12 +11,14 @@ $id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 $type = $_GET['type'] ?? 'product';
 
 if ($type === 'avatar') {
-    $query = "SELECT avatar AS image FROM users WHERE id = $id";
+    $stmt = $conn->prepare("SELECT avatar AS image FROM users WHERE id = ?");
 } else {
-    $query = "SELECT image FROM products WHERE id = $id";
+    $stmt = $conn->prepare("SELECT image FROM products WHERE id = ?");
 }
 
-$result = $conn->query($query);
+$stmt->bind_param("i", $id);
+$stmt->execute();
+$result = $stmt->get_result();
 $row = $result->fetch_assoc();
 
 if ($row && !empty($row['image'])) {
@@ -26,3 +28,4 @@ if ($row && !empty($row['image'])) {
     header("Content-Type: image/png");
     readfile("https://via.placeholder.com/150");
 }
+?>

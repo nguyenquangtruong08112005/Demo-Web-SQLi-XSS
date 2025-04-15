@@ -11,30 +11,47 @@ if (!isset($_SESSION['cart'])) {
 }
 $user_id = $_SESSION['user_id'];
 
-// Nếu form checkout được submit, tạo đơn hàng và chuyển hướng
+// Checkout: Tạo đơn hàng và order_items
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_order'])) {
     $total = 0;
+
     foreach ($_SESSION['cart'] as $pid => $qty) {
-        $result = $conn->query("SELECT * FROM products WHERE id = $pid");
+        $pid = (int)$pid;
+        $stmt = $conn->prepare("SELECT price FROM products WHERE id = ?");
+        $stmt->bind_param("i", $pid);
+        $stmt->execute();
+        $result = $stmt->get_result();
         if ($product = $result->fetch_assoc()) {
             $total += $product['price'] * $qty;
         }
+        $stmt->close();
     }
-    // Tạo đơn hàng vào bảng orders
-    $conn->query("INSERT INTO orders (user_id, total) VALUES ($user_id, $total)");
-    $order_id = $conn->insert_id;
 
-    // Thêm các mục trong giỏ hàng vào bảng order_items
+    // Thêm order
+    $stmt = $conn->prepare("INSERT INTO orders (user_id, total) VALUES (?, ?)");
+    $stmt->bind_param("id", $user_id, $total);
+    $stmt->execute();
+    $order_id = $stmt->insert_id;
+    $stmt->close();
+
+    // Thêm các mục vào order_items
     foreach ($_SESSION['cart'] as $pid => $qty) {
-        $result = $conn->query("SELECT * FROM products WHERE id = $pid");
+        $pid = (int)$pid;
+        $stmt = $conn->prepare("SELECT price FROM products WHERE id = ?");
+        $stmt->bind_param("i", $pid);
+        $stmt->execute();
+        $result = $stmt->get_result();
         if ($product = $result->fetch_assoc()) {
             $price = $product['price'];
-            $conn->query("INSERT INTO order_items (order_id, product_id, quantity, price) VALUES ($order_id, $pid, $qty, $price)");
+            $insertItem = $conn->prepare("INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)");
+            $insertItem->bind_param("iiid", $order_id, $pid, $qty, $price);
+            $insertItem->execute();
+            $insertItem->close();
         }
+        $stmt->close();
     }
 
-    // Chuyển hướng đến checkout với order_id
-    header("Location: checkout.php?order_id=$order_id");
+    header("Location: checkout.php?order_id=" . urlencode($order_id));
     exit();
 }
 ?>
@@ -42,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_order'])) {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Cart - Vulnerable Demo</title>
+  <title>Cart - Secure Demo</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
 </head>
 <body>
@@ -64,15 +81,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_order'])) {
         <?php 
         $total = 0;
         foreach ($_SESSION['cart'] as $pid => $qty): 
-          $result = $conn->query("SELECT * FROM products WHERE id = $pid");
+          $pid = (int)$pid;
+          $stmt = $conn->prepare("SELECT name, price FROM products WHERE id = ?");
+          $stmt->bind_param("i", $pid);
+          $stmt->execute();
+          $result = $stmt->get_result();
           $product = $result->fetch_assoc();
+          $stmt->close();
           $subtotal = $product['price'] * $qty;
           $total += $subtotal;
         ?>
         <tr>
-          <td><?php echo $product['name']; ?></td>
+          <td><?php echo htmlspecialchars($product['name']); ?></td>
           <td><?php echo number_format($product['price'], 2); ?></td>
-          <td><?php echo $qty; ?></td>
+          <td><?php echo (int)$qty; ?></td>
           <td><?php echo number_format($subtotal, 2); ?></td>
         </tr>
         <?php endforeach; ?>
@@ -82,7 +104,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_order'])) {
         </tr>
       </tbody>
     </table>
-    <!-- Thay link Proceed to Checkout bằng form submit -->
     <form method="post">
         <button type="submit" name="create_order" class="btn btn-primary">Proceed to Checkout</button>
     </form>
@@ -91,21 +112,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_order'])) {
   <?php endif; ?>
 
   <hr>
-  <!-- Phần Order History (không thay đổi) -->
   <h3>Order History</h3>
   <?php
-  $orders = $conn->query("SELECT * FROM orders WHERE user_id = $user_id ORDER BY created_at DESC");
+  $stmt = $conn->prepare("SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC");
+  $stmt->bind_param("i", $user_id);
+  $stmt->execute();
+  $orders = $stmt->get_result();
+  $stmt->close();
+
   if ($orders->num_rows > 0):
     while ($order = $orders->fetch_assoc()):
       $order_id = $order['id'];
-      $items = $conn->query("SELECT oi.*, p.name, p.price FROM order_items oi 
-                             JOIN products p ON oi.product_id = p.id
-                             WHERE oi.order_id = $order_id");
+      $stmt = $conn->prepare("SELECT oi.*, p.name FROM order_items oi 
+                              JOIN products p ON oi.product_id = p.id
+                              WHERE oi.order_id = ?");
+      $stmt->bind_param("i", $order_id);
+      $stmt->execute();
+      $items = $stmt->get_result();
   ?>
     <div class="card mb-4">
       <div class="card-header">
-        <strong>Order #<?php echo $order_id; ?></strong> -
-        <em><?php echo $order['created_at']; ?></em> -
+        <strong>Order #<?php echo $order_id; ?></strong> - 
+        <em><?php echo $order['created_at']; ?></em> - 
         <strong>Total:</strong> $<?php echo number_format($order['total'], 2); ?>
       </div>
       <div class="card-body">
@@ -118,18 +146,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_order'])) {
           <tbody>
             <?php while ($item = $items->fetch_assoc()): ?>
             <tr>
-              <td><?php echo $item['name']; ?></td>
+              <td><?php echo htmlspecialchars($item['name']); ?></td>
               <td>$<?php echo number_format($item['price'], 2); ?></td>
-              <td><?php echo $item['quantity']; ?></td>
+              <td><?php echo (int)$item['quantity']; ?></td>
               <td>$<?php echo number_format($item['price'] * $item['quantity'], 2); ?></td>
             </tr>
             <?php endwhile; ?>
           </tbody>
         </table>
-        <a href="checkout.php?order_id=<?php echo $order_id; ?>" class="btn btn-success btn-sm">Pay This Order</a>
+        <a href="checkout.php?order_id=<?php echo urlencode($order_id); ?>" class="btn btn-success btn-sm">Pay This Order</a>
       </div>
     </div>
-  <?php endwhile; else: ?>
+  <?php 
+      $stmt->close();
+    endwhile;
+  else: ?>
     <p>No past orders found.</p>
   <?php endif; ?>
 </div>

@@ -11,17 +11,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $confirm = $_POST["confirm_password"];
 
     // Kiểm tra trùng email
-    $checkEmail = $conn->query("SELECT * FROM users WHERE email = '$email'");
-    if ($checkEmail->num_rows > 0) {
+    $stmt = $conn->prepare("SELECT * FROM users WHERE email = ?");
+    $stmt->bind_param("s", $email); 
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    if ($result->num_rows > 0) {
         $error = "Email already exists!";
     } elseif ($password !== $confirm) {
         $error = "Passwords do not match!";
     } else {
         // Mặc định role là user
-        $sql = "INSERT INTO users (username, email, password, role) VALUES ('$username', '$email', '$password', 'user')";
-        if ($conn->query($sql)) {
-            $_SESSION['user'] = $username;
-            $_SESSION['email'] = $email;
+        $stmt = $conn->prepare("INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, 'user')");
+        $stmt->bind_param("sss", $username, $email, $password);
+        if ($stmt->execute()) {
+            $_SESSION['user'] = htmlspecialchars($username);  
+            $_SESSION['email'] = htmlspecialchars($email);    
             $_SESSION['role'] = 'user';
             $_SESSION['user_id'] = $conn->insert_id;
             header("Location: dashboard.php");
@@ -36,7 +41,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Signup - Vulnerable Demo</title>
+    <title>Signup</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
 </head>
 <body>
@@ -44,7 +49,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <div class="container mt-4">
     <h2>Signup</h2>
     <?php if ($error): ?>
-        <div class="alert alert-danger"><?php echo $error; ?></div>
+        <div class="alert alert-danger"><?php echo htmlspecialchars($error); ?></div> 
     <?php endif; ?>
     <form method="post">
         <div class="mb-3">
